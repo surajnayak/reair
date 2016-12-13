@@ -13,6 +13,9 @@ import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.ClusterFactory;
 import com.airbnb.reair.incremental.configuration.ConfigurationException;
 import com.airbnb.reair.incremental.configuration.ConfiguredClusterFactory;
+import com.airbnb.reair.incremental.configuration.KrbClusterUtils;
+import com.airbnb.reair.incremental.configuration.SecuredClusterFactory;
+import com.airbnb.reair.incremental.configuration.TokenInitException;
 import com.airbnb.reair.incremental.db.PersistedJobInfoStore;
 import com.airbnb.reair.incremental.filter.ReplicationFilter;
 import com.airbnb.reair.incremental.thrift.TReplicationService;
@@ -27,12 +30,15 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.security.Credentials;
+import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.server.TSimpleServer;
 import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TServerTransport;
 
 import java.io.IOException;
+import java.net.URI;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,8 +63,8 @@ public class ReplicationLauncher {
   public static void launch(Configuration conf,
       Optional<Long> startAfterAuditLogId,
       boolean resetState)
-    throws AuditLogEntryException, ConfigurationException, IOException, StateUpdateException,
-      SQLException {
+          throws AuditLogEntryException, ConfigurationException, IOException, StateUpdateException,
+          SQLException, TokenInitException {
 
 
     // Create the audit log reader
@@ -122,9 +128,12 @@ public class ReplicationLauncher {
       LOG.info("Resetting state by aborting non-completed jobs");
       persistedJobInfoStore.abortRunnableFromDb();
     }
-
-    ClusterFactory clusterFactory = new ConfiguredClusterFactory();
+//TODO if secured cluster
+//    ClusterFactory clusterFactory = new ConfiguredClusterFactory();
+    ClusterFactory clusterFactory = new SecuredClusterFactory();
     clusterFactory.setConf(conf);
+
+    tokensInit(new Credentials(), conf);
 
     final Cluster srcCluster = clusterFactory.getSrcCluster();
     final Cluster destCluster = clusterFactory.getDestCluster();
@@ -221,6 +230,35 @@ public class ReplicationLauncher {
     }
   }
 
+  private static void tokensInit(Credentials credentials, Configuration config) throws TokenInitException {
+    try {
+      TokenCache.obtainTokensForNamenodes(
+              credentials,
+              new Path[] {
+                      new Path(config.get(ConfigurationKeys.SRC_HDFS_ROOT)),
+                      new Path(config.get(ConfigurationKeys.DEST_HDFS_ROOT)) },
+              config);
+
+      URI srcUri = new URI(config.get(ConfigurationKeys.SRC_CLUSTER_METASTORE_URL));
+      KrbClusterUtils.initMetastoreDelegationToken(
+              srcUri,
+              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_SRC,
+              config.get(ConfigurationKeys.SRC_METASTORE_PRINCIPAL),
+              credentials
+      );
+
+      URI destUri = new URI(config.get(ConfigurationKeys.DEST_CLUSTER_METASTORE_URL));
+      KrbClusterUtils.initMetastoreDelegationToken(
+              destUri,
+              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_DEST,
+              config.get(ConfigurationKeys.DEST_METASTORE_PRINCIPAL),
+              credentials
+      );
+    } catch (Exception ex) {
+      throw new TokenInitException(ex);
+    }
+  }
+
   /**
    * Launcher entry point.
    *
@@ -228,8 +266,8 @@ public class ReplicationLauncher {
    */
   @SuppressWarnings("static-access")
   public static void main(String[] argv)
-      throws AuditLogEntryException, ConfigurationException, IOException, ParseException,
-      StateUpdateException, SQLException {
+          throws AuditLogEntryException, ConfigurationException, IOException, ParseException,
+          StateUpdateException, SQLException, TokenInitException {
     Options options = new Options();
 
     options.addOption(OptionBuilder.withLongOpt("config-files")

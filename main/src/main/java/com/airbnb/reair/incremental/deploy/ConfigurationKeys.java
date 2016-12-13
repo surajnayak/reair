@@ -42,6 +42,10 @@ public class ConfigurationKeys {
   public static final String SRC_HDFS_ROOT = "airbnb.reair.clusters.src.hdfs.root";
   // The root of the temporary directory for storing temporary files on the source cluster
   public static final String SRC_HDFS_TMP = "airbnb.reair.clusters.src.hdfs.tmp";
+  // The
+  public static final String SRC_METASTORE_PRINCIPAL = "airbnb.reair.clusters.src.metastore.principal";
+  // The
+  public static final String SRC_TOKEN_SIGNATURE = "airbnb.reair.clusters.src.token.signature";
 
   // Name to use for the destination cluster
   public static final String DEST_CLUSTER_NAME = "airbnb.reair.clusters.dest.name";
@@ -52,6 +56,12 @@ public class ConfigurationKeys {
   public static final String DEST_HDFS_ROOT = "airbnb.reair.clusters.dest.hdfs.root";
   // The root of the temporary directory for storing temporary files on the destination cluster
   public static final String DEST_HDFS_TMP = "airbnb.reair.clusters.dest.hdfs.tmp";
+  // The
+  public static final String DEST_METASTORE_PRINCIPAL = "airbnb.reair.clusters.dest.metastore.principal";
+  // The
+  public static final String DEST_TOKEN_SIGNATURE = "airbnb.reair.clusters.dest.token.signature";
+
+
 
   // Class to use for filtering out entries from the audit log
   public static final String OBJECT_FILTER_CLASS = "airbnb.reair.object.filter";

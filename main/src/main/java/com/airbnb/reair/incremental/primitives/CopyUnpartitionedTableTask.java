@@ -19,6 +19,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.Table;
 
 import java.io.IOException;
@@ -84,8 +85,9 @@ public class CopyUnpartitionedTableTask implements ReplicationTask {
     HiveMetastoreClient destMs = destCluster.getMetastoreClient();
     HiveMetastoreClient srcMs = srcCluster.getMetastoreClient();
 
+    Table srcTable = srcMs.getTable(spec.getDbName(), spec.getTableName());
     // Get a fresh copy of the metadata from the source Hive metastore
-    Table freshSrcTable = srcMs.getTable(spec.getDbName(), spec.getTableName());
+    Table freshSrcTable = srcTable;
 
     if (freshSrcTable == null) {
       LOG.warn("Source table " + spec + " doesn't exist, so not " + "copying");
@@ -106,8 +108,7 @@ public class CopyUnpartitionedTableTask implements ReplicationTask {
           existingTable);
     }
 
-    Table destTable =
-        objectModifier.createDestTable(srcCluster, destCluster, freshSrcTable, existingTable);
+    Table destTable = objectModifier.createDestTable(srcCluster, destCluster, freshSrcTable, existingTable);
 
     // Refresh in case the conflict handler did something
     existingTable = destMs.getTable(spec.getDbName(), spec.getTableName());
@@ -161,6 +162,9 @@ public class CopyUnpartitionedTableTask implements ReplicationTask {
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
         ReplicationUtils.createDbIfNecessary(srcMs, destMs, destTable.getDbName());
         LOG.debug("Creating: " + destTable);
+        //TODO if secured cluster
+        PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(spec.getDbName(), spec.getTableName(), srcTable.getOwner());
+        destTable.setPrivileges(privilegeSet);
         destMs.createTable(destTable);
         LOG.debug("Successfully created " + spec);
         break;

@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -185,6 +186,68 @@ public class FsUtils {
       pathToStatus.put(getRelativePath(root, status.getPath()), status.getModificationTime());
     }
     return pathToStatus;
+  }
+
+  private static Map<String, FileOwnership> getRelativePathToOwner(Configuration conf, Path root,
+                                                                   Set<FileStatus> statuses)
+          throws ArgumentException, IOException {
+    Map<String, FileOwnership> pathToStatus = new HashMap<>();
+
+    FileSystem srcFs = FileSystem.get(root.toUri(), conf);
+
+    for (FileStatus status : statuses) {
+      Path path = status.getPath();
+      Path parentPath = path.getParent();
+      FileStatus parentStatus = srcFs.getFileStatus(parentPath);
+      pathToStatus.put(getRelativePath(root, path), new FileOwnership(status, parentStatus));
+    }
+    return pathToStatus;
+  }
+
+  static class FileOwnership {
+    private final String owner;
+    private final String group;
+    private final String parentOwner;
+    private final String parentGroup;
+
+    public FileOwnership(FileStatus status, FileStatus parentStatus) {
+      this.owner = status.getOwner();
+      this.group = status.getGroup();
+      this.parentOwner = parentStatus.getOwner();
+      this.parentGroup = parentStatus.getGroup();
+    }
+
+    public String getOwner() {
+      return owner;
+    }
+
+    public String getGroup() {
+      return group;
+    }
+
+    public String getParentOwner() {
+      return parentOwner;
+    }
+
+    public String getParentGroup() {
+      return parentGroup;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      FileOwnership that = (FileOwnership) o;
+      return Objects.equals(owner, that.owner) &&
+              Objects.equals(group, that.group) &&
+              Objects.equals(parentOwner, that.parentOwner) &&
+              Objects.equals(parentGroup, that.parentGroup);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(owner, group, parentOwner, parentGroup);
+    }
   }
 
   /**
@@ -394,6 +457,43 @@ public class FsUtils {
 
     for (String file : srcFileModificationTimes.keySet()) {
       destFs.setTimes(new Path(dest, file), srcFileModificationTimes.get(file), -1);
+    }
+  }
+
+  public static void syncOwnership(Configuration conf, Path src, Path dest,
+                                   Optional<PathFilter> filter) throws IOException {
+    Set<FileStatus> srcFileStatuses = getFileStatusesRecursive(conf, src, filter);
+
+    Map<String, FileOwnership> srcFileOwners = null;
+
+    try {
+      srcFileOwners = getRelativePathToOwner(conf, src, srcFileStatuses);
+    } catch (ArgumentException e) {
+      throw new IOException("Invalid file statuses!", e);
+    }
+
+    FileSystem destFs = dest.getFileSystem(conf);
+    for (String file : srcFileOwners.keySet()) {
+      String owner = srcFileOwners.get(file).getOwner();
+      String group = srcFileOwners.get(file).getGroup();
+      String parentOwner = srcFileOwners.get(file).getParentOwner();
+      String parentGroup = srcFileOwners.get(file).getParentGroup();
+      LOG.debug("Syncing ownership for file: " + file + " " + owner + ":" + group);
+      Path destFile = new Path(dest, file);
+      destFs.setOwner(destFile, owner, group);
+      //TODO improve performance:
+      Path destParentFile = destFile.getParent();
+      destFs.setOwner(destParentFile, parentOwner, parentGroup);
+    }
+  }
+
+  private static void syncOwnershipForParent(FileSystem srcFs, FileSystem dstFs,
+                                             Path srcParentPath, Path dstParentPath) throws IOException {
+    FileStatus srcParentStatus = srcFs.getFileStatus(srcParentPath);
+    FileStatus dstParentStatus = dstFs.getFileStatus(dstParentPath);
+    if (!srcParentStatus.getOwner().equals(dstParentStatus.getOwner()) ||
+            !srcParentStatus.getGroup().equals(dstParentStatus.getGroup())) {
+      dstFs.setOwner(dstParentPath, srcParentStatus.getOwner(), srcParentStatus.getGroup());
     }
   }
 

@@ -2,6 +2,7 @@ package com.airbnb.reair.common;
 
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.Table;
 
 import java.util.List;
@@ -15,6 +16,8 @@ public interface HiveMetastoreClient {
   Partition addPartition(Partition partition) throws HiveMetastoreException;
 
   Table getTable(String dbName, String tableName) throws HiveMetastoreException;
+
+  PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName, String owner) throws HiveMetastoreException;
 
   Partition getPartition(String dbName, String tableName, String partitionName)
       throws HiveMetastoreException;
