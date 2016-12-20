@@ -23,6 +23,7 @@ public class DirectoryCopier {
   private Configuration conf;
   private Path tmpDir;
   private boolean checkFileModificationTimes;
+  private boolean syncOwnership;
 
   /**
    * Constructor for the directory copier.
@@ -38,6 +39,7 @@ public class DirectoryCopier {
     this.conf = conf;
     this.tmpDir = tmpDir;
     this.checkFileModificationTimes = checkFileModificationTimes;
+    this.syncOwnership = conf.getBoolean(ConfigurationKeys.SYNC_OWNERSHIP_FOR_FILE_COPY, false);
   }
 
   /**
@@ -74,7 +76,8 @@ public class DirectoryCopier {
       DistCpWrapperOptions options =
           new DistCpWrapperOptions(srcDir, destDir, distCpTmpDir, distCpLogDir)
               .setAtomic(true)
-              .setSyncModificationTimes(checkFileModificationTimes);
+              .setSyncModificationTimes(checkFileModificationTimes)
+              .setSyncOwnership(this.syncOwnership);
 
       long copyJobTimeoutSeconds = conf.getLong(
           ConfigurationKeys.COPY_JOB_TIMEOUT_SECONDS,

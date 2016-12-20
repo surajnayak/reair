@@ -23,6 +23,8 @@ public class DistCpWrapperOptions {
   private boolean canDeleteDest = true;
   // Whether to set the modification times to be the same for the copied files
   private boolean syncModificationTimes = true;
+  // Whether to set the ownership to be the same for the copied files
+  private boolean syncOwnership = false;
   // Size number of mappers for the distcp job based on the source directory
   // size and the number of files.
   private long bytesPerMapper = (long) 256e6;
@@ -63,6 +65,11 @@ public class DistCpWrapperOptions {
 
   public DistCpWrapperOptions setSyncModificationTimes(boolean syncModificationTimes) {
     this.syncModificationTimes = syncModificationTimes;
+    return this;
+  }
+
+  public DistCpWrapperOptions setSyncOwnership(boolean syncOwnership) {
+    this.syncOwnership = syncOwnership;
     return this;
   }
 
@@ -107,6 +114,10 @@ public class DistCpWrapperOptions {
 
   public boolean getSyncModificationTimes() {
     return syncModificationTimes;
+  }
+
+  public boolean getSyncOwnership() {
+    return syncOwnership;
   }
 
   public long getBytesPerMapper() {

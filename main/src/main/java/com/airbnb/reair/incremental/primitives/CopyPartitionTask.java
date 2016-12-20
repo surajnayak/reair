@@ -11,6 +11,7 @@ import com.airbnb.reair.incremental.RunInfo;
 import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.DestinationObjectFactory;
 import com.airbnb.reair.incremental.configuration.ObjectConflictHandler;
+import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import com.airbnb.reair.multiprocessing.Lock;
 import com.airbnb.reair.multiprocessing.LockSet;
 
@@ -222,7 +223,7 @@ public class CopyPartitionTask implements ReplicationTask {
     switch (action) {
 
       case CREATE:
-        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destPartition.getDbName());
+        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destPartition.getDbName(), isSaslEnabled());
 
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
         destMs.addPartition(destPartition);
@@ -256,5 +257,9 @@ public class CopyPartitionTask implements ReplicationTask {
     lockSet.add(new Lock(Lock.Type.SHARED, spec.getTableSpec().toString()));
     lockSet.add(new Lock(Lock.Type.EXCLUSIVE, spec.toString()));
     return lockSet;
+  }
+
+  private boolean isSaslEnabled() {
+    return conf.getBoolean(ConfigurationKeys.SASL_ENABLED, false);
   }
 }

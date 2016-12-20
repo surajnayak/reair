@@ -9,6 +9,7 @@ import com.airbnb.reair.incremental.RunInfo;
 import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.DestinationObjectFactory;
 import com.airbnb.reair.incremental.configuration.ObjectConflictHandler;
+import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import com.airbnb.reair.multiprocessing.Lock;
 import com.airbnb.reair.multiprocessing.LockSet;
 
@@ -16,6 +17,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.Table;
 
 import java.util.Optional;
@@ -113,8 +115,12 @@ public class CopyPartitionedTableTask implements ReplicationTask {
     switch (action) {
       case CREATE:
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
-        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destTable.getDbName());
+        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destTable.getDbName(), isSaslEnabled());
         LOG.debug("Creating: " + destTable);
+        if (isSaslEnabled()) {
+          PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(spec.getDbName(), spec.getTableName());
+          destTable.setPrivileges(privilegeSet);
+        }
         destMs.createTable(destTable);
         LOG.debug("Successfully created table " + spec);
         break;
@@ -123,6 +129,10 @@ public class CopyPartitionedTableTask implements ReplicationTask {
         LOG.debug("Altering table " + spec + " on destination");
         LOG.debug("Existing table: " + existingTable);
         LOG.debug("Replacement table: " + destTable);
+        if (isSaslEnabled()) {
+          PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(spec.getDbName(), spec.getTableName());
+          destTable.setPrivileges(privilegeSet);
+        }
         destMs.alterTable(destTable.getDbName(), destTable.getTableName(), destTable);
         LOG.debug("Successfully altered " + spec);
         break;
@@ -136,6 +146,10 @@ public class CopyPartitionedTableTask implements ReplicationTask {
     }
 
     return new RunInfo(RunInfo.RunStatus.SUCCESSFUL, 0);
+  }
+
+  private boolean isSaslEnabled() {
+    return conf.getBoolean(ConfigurationKeys.SASL_ENABLED, false);
   }
 
   @Override
