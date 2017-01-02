@@ -36,7 +36,7 @@ public class Stage2DirectoryCopyMapper extends Mapper<LongWritable, Text, LongWr
   private static final PathFilter hiddenFileFilter = new PathFilter() {
     public boolean accept(Path path) {
       String name = path.getName();
-      return !name.startsWith("_") && !name.startsWith(".");
+      return !name.startsWith(".");
     }
   };
 
