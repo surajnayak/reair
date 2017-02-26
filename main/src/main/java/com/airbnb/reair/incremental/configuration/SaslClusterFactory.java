@@ -1,46 +1,16 @@
 package com.airbnb.reair.incremental.configuration;
 
-import com.airbnb.reair.incremental.DirectoryCopier;
 import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.Optional;
 
-public class SaslClusterFactory implements ClusterFactory {
-
-  private Optional<Configuration> optionalConf = Optional.empty();
-
-  public void setConf(Configuration conf) {
-    this.optionalConf = Optional.of(conf);
-  }
-
-  private static URI makeUri(String thriftUri) throws ConfigurationException {
-    try {
-      URI uri = new URI(thriftUri);
-
-      if (uri.getPort() <= 0) {
-        throw new ConfigurationException("No port specified in " + thriftUri);
-      }
-
-      if (!"thrift".equals(uri.getScheme())) {
-        throw new ConfigurationException("Not a thrift URI; " + thriftUri);
-      }
-      return uri;
-    } catch (URISyntaxException e) {
-      throw new ConfigurationException(e);
-    }
-  }
+public class SaslClusterFactory extends AbstractClusterFactory {
 
   @Override
   public Cluster getDestCluster() throws ConfigurationException {
-    if (!optionalConf.isPresent()) {
-      throw new ConfigurationException("Configuration not set!");
-    }
-
-    Configuration conf = optionalConf.get();
+    Configuration conf = getConf();
 
     String destClusterName = conf.get(ConfigurationKeys.DEST_CLUSTER_NAME);
     String destMetastoreUrlString = conf.get(ConfigurationKeys.DEST_CLUSTER_METASTORE_URL);
@@ -50,11 +20,9 @@ public class SaslClusterFactory implements ClusterFactory {
     String metastorePrincipal = conf.get(ConfigurationKeys.DEST_METASTORE_PRINCIPAL);
 
     return new SaslCluster(
+      conf,
       destClusterName,
-      destMetastoreUrl.getHost(),
-      destMetastoreUrl.getPort(),
-      null,
-      null,
+      destMetastoreUrl,
       new Path(destHdfsRoot),
       new Path(destHdfsTmp),
       metastorePrincipal,
@@ -63,13 +31,8 @@ public class SaslClusterFactory implements ClusterFactory {
 
   @Override
   public Cluster getSrcCluster() throws ConfigurationException {
+    Configuration conf = getConf();
 
-    if (!optionalConf.isPresent()) {
-      throw new ConfigurationException("Configuration not set!");
-    }
-
-    Configuration conf = optionalConf.get();
-    // Create the source cluster object
     String srcClusterName = conf.get(ConfigurationKeys.SRC_CLUSTER_NAME);
     String srcMetastoreUrlString = conf.get(ConfigurationKeys.SRC_CLUSTER_METASTORE_URL);
     URI srcMetastoreUrl = makeUri(srcMetastoreUrlString);
@@ -78,27 +41,12 @@ public class SaslClusterFactory implements ClusterFactory {
     String metastorePrincipal = conf.get(ConfigurationKeys.SRC_METASTORE_PRINCIPAL);
 
     return new SaslCluster(
+      conf,
       srcClusterName,
-      srcMetastoreUrl.getHost(),
-      srcMetastoreUrl.getPort(),
-      null,
-      null,
+      srcMetastoreUrl,
       new Path(srcHdfsRoot),
       new Path(srcHdfsTmp),
       metastorePrincipal,
       SaslClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_SRC);
-  }
-
-  @Override
-  public DirectoryCopier getDirectoryCopier() throws ConfigurationException {
-    if (!optionalConf.isPresent()) {
-      throw new ConfigurationException("Configuration not set!");
-    }
-
-    Configuration conf = optionalConf.get();
-    String destHdfsTmp = conf.get(ConfigurationKeys.DEST_HDFS_TMP);
-    return new DirectoryCopier(conf,
-      new Path(destHdfsTmp),
-      conf.getBoolean(ConfigurationKeys.SYNC_MODIFIED_TIMES_FOR_FILE_COPY, true));
   }
 }

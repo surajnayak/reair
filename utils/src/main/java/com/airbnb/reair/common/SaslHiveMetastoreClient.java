@@ -38,21 +38,10 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   }
 
   @Override
-  public void close() {
-
-  }
-
-  private void connectIfNeeded() throws HiveMetastoreException {
-
-  }
-
-  @Override
   public synchronized Partition addPartition(Partition partition) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.add_partition(partition);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -62,14 +51,11 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
       throws HiveMetastoreException {
 
     try {
-      connectIfNeeded();
-
       Table table = client.getTable(dbName, tableName);
       return table;
     } catch (NoSuchObjectException e) {
       return null;
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -79,7 +65,6 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
       throws HiveMetastoreException {
 
     try {
-      connectIfNeeded();
       return client.getPartition(dbName, tableName, partitionName);
     } catch (NoSuchObjectException e) {
       return null;
@@ -95,7 +80,6 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
         throw new HiveMetastoreException(e);
       }
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -104,10 +88,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized void alterPartition(String dbName, String tableName, Partition partition)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.alter_partition(dbName, tableName, partition);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -116,10 +98,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized void alterTable(String dbName, String tableName, Table table)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.alter_table(dbName, tableName, table);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -147,10 +127,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public void createTable(Table table) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.createTable(table);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -160,10 +138,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized void dropTable(String dbName, String tableName, boolean deleteData)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.dropTable(dbName, tableName, deleteData, true);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -172,10 +148,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized void dropPartition(String dbName, String tableName, String partitionName,
       boolean deleteData) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.dropPartition(dbName, tableName, partitionName, deleteData);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -184,10 +158,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized Map<String, String> partitionNameToMap(String partitionName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.partitionNameToSpec(partitionName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -195,10 +167,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public synchronized void createDatabase(Database db) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.createDatabase(db);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -206,12 +176,10 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public synchronized Database getDatabase(String dbName) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getDatabase(dbName);
     } catch (NoSuchObjectException e) {
       return null;
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -225,10 +193,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized List<String> getPartitionNames(String dbName, String tableName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.listPartitionNames(dbName, tableName, (short) -1);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -237,10 +203,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized List<String> getTables(String dbName, String tableName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getTables(dbName, tableName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -253,11 +217,9 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
       String destinationTableName)
           throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.exchange_partition(partitionSpecs, sourceDb, sourceTable, destDb,
           destinationTableName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -270,10 +232,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
       Partition partition)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.renamePartition(db, table, partitionValues, partition);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -281,10 +241,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public List<String> getAllDatabases() throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getAllDatabases();
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -292,10 +250,8 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public List<String> getAllTables(String dbName) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getAllTables(dbName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -320,7 +276,6 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
 
       return  principalPrivs;
     } catch (TException ex) {
-      close();
       throw new HiveMetastoreException(ex);
     }
   }
@@ -335,7 +290,6 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
       privileges.addAll(this.listHiveDatabasePrivileges(dbName, PrincipalType.ROLE));
       return Lists.newArrayList(privileges.iterator());
     } catch (TException ex) {
-      close();
       throw new HiveMetastoreException(ex);
     }
   }
@@ -347,6 +301,11 @@ public class SaslHiveMetastoreClient implements HiveMetastoreClient {
     } catch (TException e) {
       throw new HiveMetastoreException(e);
     }
+  }
+
+  @Override
+  public void close() {
+
   }
 
   private List<HiveObjectPrivilege> selectPrivilegesOfType(

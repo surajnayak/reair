@@ -1,7 +1,9 @@
 package com.airbnb.reair.incremental.configuration;
 
+import com.airbnb.reair.common.HiveMetastoreException;
 import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -9,11 +11,13 @@ import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.thrift.DelegationTokenIdentifier;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 
@@ -71,27 +75,36 @@ public class SaslClusterUtils {
    */
   public static IMetaStoreClient getMetastoreClient(
           URI uri, String signature, String principal, Configuration conf)
-          throws Exception {
+          throws HiveMetastoreException {
     HiveConf hiveConf = getHiveConf(conf, uri, principal);
-    String delegationToken = System.getenv("HADOOP_TOKEN_FILE_LOCATION");
+    String delegationToken = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
     if (delegationToken == null) {
-      FileSystem fs = FileSystem.get(conf);
-      Credentials creds = new Credentials();
-      fs.addDelegationTokens(UserGroupInformation.getCurrentUser().getUserName(), creds);
-      delegationToken = ".reair-" + System.currentTimeMillis() + ".dt";
-      Path filename = new Path(delegationToken);
-      creds.writeTokenStorageFile(filename, conf);
-      fs.deleteOnExit(filename);
+      try {
+        delegationToken = createTokenFile(conf);
+      } catch (IOException ex) {
+        throw new HiveMetastoreException(ex);
+      }
     }
-    hiveConf.set("mapreduce.job.credentials.binary", delegationToken);
+    hiveConf.set(MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY, delegationToken);
     hiveConf.set("hive.metastore.token.signature", signature);
 
-    return createMetastoreClient(uri, hiveConf);
+    return createMetastoreClient(hiveConf);
+  }
+
+  private static String createTokenFile(Configuration conf) throws IOException {
+    FileSystem fs = FileSystem.get(conf);
+    Credentials creds = new Credentials();
+    fs.addDelegationTokens(UserGroupInformation.getCurrentUser().getUserName(), creds);
+    String delegationToken = ".reair-" + System.currentTimeMillis() + ".dt";
+    Path filename = new Path(delegationToken);
+    creds.writeTokenStorageFile(filename, conf);
+    fs.deleteOnExit(filename);
+    return delegationToken;
   }
 
   private static void initMetastoreDelegationToken(
           URI metastoreUri, String signature, String principal, Credentials credentials)
-          throws Exception {
+          throws HiveMetastoreException, IOException, TokenInitException {
     Token<DelegationTokenIdentifier> token =
             createMetastoreDelegationToken(metastoreUri, signature, principal);
     credentials.addToken(token.getService(), token);
@@ -99,33 +112,35 @@ public class SaslClusterUtils {
   }
 
   private static Token<DelegationTokenIdentifier> createMetastoreDelegationToken(
-          URI uri, String signature, String principal) throws Exception {
+          URI uri, String signature, String principal) throws HiveMetastoreException, TokenInitException {
     Configuration conf = getConfiguration();
     HiveConf hiveConf = getHiveConf(conf, uri, principal);
-    IMetaStoreClient metaStoreClient = createMetastoreClient(uri, hiveConf);
+    IMetaStoreClient metaStoreClient = createMetastoreClient(hiveConf);
 
-    String delegationToken = metaStoreClient.getDelegationToken(
-            UserGroupInformation.getCurrentUser().getUserName(), principal);
-
-    Token<DelegationTokenIdentifier> token = new Token<DelegationTokenIdentifier>();
-    token.decodeFromUrlString(delegationToken);
-    token.setService(new Text(signature));
-    return token;
+    try {
+      String delegationToken = metaStoreClient.getDelegationToken(
+              UserGroupInformation.getCurrentUser().getUserName(), principal);
+      Token<DelegationTokenIdentifier> token = new Token<DelegationTokenIdentifier>();
+      token.decodeFromUrlString(delegationToken);
+      token.setService(new Text(signature));
+      return token;
+    } catch (Exception ex) {
+      throw new TokenInitException(ex);
+    }
   }
 
-  private static IMetaStoreClient createMetastoreClient(URI uri, HiveConf hiveConf)
-          throws Exception {
-    String serverUri = "thrift://" + uri.getAuthority();
+  private static IMetaStoreClient createMetastoreClient(HiveConf hiveConf)
+          throws HiveMetastoreException {
     try {
       return new HiveMetaStoreClient(hiveConf);
     } catch (Exception e) {
-      throw new Exception("Error trying to connect to " + serverUri, e);
+      throw new HiveMetastoreException(e);
     }
   }
 
   private static Configuration getConfiguration() {
     Configuration conf = new Configuration();
-    conf.set("hadoop.security.authentication", "kerberos");
+    conf.set(CommonConfigurationKeys.HADOOP_SECURITY_AUTHENTICATION, "kerberos");
     return conf;
   }
 
@@ -134,9 +149,9 @@ public class SaslClusterUtils {
     for (Map.Entry<String, String> entry : conf) {
       hiveConf.set(entry.getKey(), entry.getValue());
     }
-    hiveConf.set("hive.metastore.sasl.enabled", "true");
-    hiveConf.set("hive.metastore.uris", uri.toString());
-    hiveConf.set("hive.metastore.kerberos.principal", principal);
+    hiveConf.set(HiveConf.ConfVars.METASTORE_USE_THRIFT_SASL.varname, "true");
+    hiveConf.set(HiveConf.ConfVars.METASTOREURIS.varname, uri.toString());
+    hiveConf.set(HiveConf.ConfVars.METASTORE_KERBEROS_PRINCIPAL.varname, principal);
     return hiveConf;
   }
 }
