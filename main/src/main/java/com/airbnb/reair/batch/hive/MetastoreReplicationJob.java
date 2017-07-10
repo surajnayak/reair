@@ -1,5 +1,7 @@
 package com.airbnb.reair.batch.hive;
 
+import com.airbnb.reair.incremental.configuration.KrbClusterUtils;
+import com.airbnb.reair.incremental.configuration.TokenInitException;
 import com.google.common.collect.ImmutableList;
 
 import com.airbnb.reair.batch.template.TemplateRenderException;
@@ -36,6 +38,8 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.security.TokenCache;
+import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.velocity.VelocityContext;
@@ -43,6 +47,7 @@ import org.apache.velocity.VelocityContext;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
@@ -361,10 +366,12 @@ public class MetastoreReplicationJob extends Configured implements Tool {
         ConfigurationKeys.SRC_CLUSTER_METASTORE_URL,
         ConfigurationKeys.SRC_HDFS_ROOT,
         ConfigurationKeys.SRC_HDFS_TMP,
+        ConfigurationKeys.SRC_METASTORE_PRINCIPAL,
         ConfigurationKeys.DEST_CLUSTER_NAME,
         ConfigurationKeys.DEST_CLUSTER_METASTORE_URL,
         ConfigurationKeys.DEST_HDFS_ROOT,
         ConfigurationKeys.DEST_HDFS_TMP,
+        ConfigurationKeys.DEST_METASTORE_PRINCIPAL,
         ConfigurationKeys.BATCH_JOB_METASTORE_BLACKLIST,
         ConfigurationKeys.BATCH_JOB_CLUSTER_FACTORY_CLASS,
         ConfigurationKeys.BATCH_JOB_OUTPUT_DIR,
@@ -386,7 +393,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
   }
 
   private int runMetastoreCompareJob(Path output)
-    throws IOException, InterruptedException, ClassNotFoundException {
+          throws IOException, InterruptedException, ClassNotFoundException, TokenInitException {
     Job job = Job.getInstance(this.getConf(), "Stage1: Metastore Compare Job");
 
     job.setJarByClass(this.getClass());
@@ -400,6 +407,8 @@ public class MetastoreReplicationJob extends Configured implements Tool {
     FileOutputFormat.setOutputPath(job, output);
     FileOutputFormat.setOutputCompressorClass(job, GzipCodec.class);
 
+    tokensInit(job.getCredentials(), job.getConfiguration());
+
     boolean success = job.waitForCompletion(true);
 
     return success ? 0 : 1;
@@ -412,7 +421,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
    * @param outputPath the directory to store the logging output data
    */
   private int runMetastoreCompareJob(Optional<Path> inputTableListPath, Path outputPath)
-      throws InterruptedException, IOException, ClassNotFoundException, TemplateRenderException {
+          throws InterruptedException, IOException, ClassNotFoundException, TemplateRenderException, TokenInitException {
     LOG.info("Starting job for step 1...");
 
     int result;
@@ -432,7 +441,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
   }
 
   private int runMetastoreCompareJobWithTextInput(Path input, Path output)
-    throws IOException, InterruptedException, ClassNotFoundException {
+          throws IOException, InterruptedException, ClassNotFoundException, TokenInitException {
     Job job = Job.getInstance(this.getConf(), "Stage1: Metastore Compare Job with Input List");
 
     job.setJarByClass(this.getClass());
@@ -454,6 +463,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
         ConfigurationKeys.BATCH_JOB_METASTORE_PARALLELISM,
         150));
 
+    tokensInit(job.getCredentials(), job.getConfiguration());
 
     boolean success = job.waitForCompletion(true);
 
@@ -461,7 +471,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
   }
 
   private int runHdfsCopyJob(Path input, Path output)
-    throws IOException, InterruptedException, ClassNotFoundException, TemplateRenderException {
+          throws IOException, InterruptedException, ClassNotFoundException, TemplateRenderException, TokenInitException {
 
     LOG.info("Starting job for step 2...");
 
@@ -487,6 +497,8 @@ public class MetastoreReplicationJob extends Configured implements Tool {
         ConfigurationKeys.BATCH_JOB_COPY_PARALLELISM,
         150));
 
+    tokensInit(job.getCredentials(), job.getConfiguration());
+
     boolean success = job.waitForCompletion(true);
 
     if (success) {
@@ -500,7 +512,7 @@ public class MetastoreReplicationJob extends Configured implements Tool {
   }
 
   private int runCommitChangeJob(Path input, Path output)
-    throws IOException, InterruptedException, ClassNotFoundException, TemplateRenderException {
+          throws IOException, InterruptedException, ClassNotFoundException, TemplateRenderException, TokenInitException {
 
     LOG.info("Starting job for step 3...");
 
@@ -526,6 +538,8 @@ public class MetastoreReplicationJob extends Configured implements Tool {
         ConfigurationKeys.BATCH_JOB_METASTORE_PARALLELISM,
         150));
 
+    tokensInit(job.getCredentials(), job.getConfiguration());
+
     boolean success = job.waitForCompletion(true);
 
     if (success) {
@@ -534,6 +548,36 @@ public class MetastoreReplicationJob extends Configured implements Tool {
           + VelocityUtils.renderTemplate(STEP3_HQL_TEMPLATE, velocityContext));
     }
     return success ? 0 : 1;
+  }
+
+  private void tokensInit(Credentials credentials, Configuration jobConfig) throws TokenInitException {
+    Configuration appConfig = this.getConf();
+    try {
+      TokenCache.obtainTokensForNamenodes(
+              credentials,
+              new Path[] {
+                      new Path(appConfig.get(ConfigurationKeys.SRC_HDFS_ROOT)),
+                      new Path(appConfig.get(ConfigurationKeys.DEST_HDFS_ROOT)) },
+              jobConfig);
+
+      URI srcUri = new URI(appConfig.get(ConfigurationKeys.SRC_CLUSTER_METASTORE_URL));
+      KrbClusterUtils.initMetastoreDelegationToken(
+              srcUri,
+              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_SRC,
+              appConfig.get(ConfigurationKeys.SRC_METASTORE_PRINCIPAL),
+              credentials
+      );
+
+      URI destUri = new URI(appConfig.get(ConfigurationKeys.DEST_CLUSTER_METASTORE_URL));
+      KrbClusterUtils.initMetastoreDelegationToken(
+              destUri,
+              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_DEST,
+              appConfig.get(ConfigurationKeys.DEST_METASTORE_PRINCIPAL),
+              credentials
+      );
+    } catch (Exception ex) {
+      throw new TokenInitException(ex);
+    }
   }
 
   /**

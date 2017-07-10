@@ -10,6 +10,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.Table;
 
 import java.util.ArrayList;
@@ -101,6 +102,11 @@ public class MockHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public Table getTable(String dbName, String tableName) throws HiveMetastoreException {
     return specToTable.get(new HiveObjectSpec(dbName, tableName));
+  }
+
+  @Override
+  public PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName, String owner) throws HiveMetastoreException {
+    return new PrincipalPrivilegeSet();
   }
 
   @Override

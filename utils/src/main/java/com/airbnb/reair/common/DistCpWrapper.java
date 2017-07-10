@@ -131,6 +131,7 @@ public class DistCpWrapper {
 
       if (syncModificationTimes) {
         FsUtils.syncModificationTimes(conf, srcDir, distcpDestDir, Optional.empty());
+        FsUtils.syncOwnership(conf, srcDir, distcpDestDir, Optional.empty());
       }
     } else {
 
@@ -183,6 +184,7 @@ public class DistCpWrapper {
 
     if (syncModificationTimes) {
       FsUtils.syncModificationTimes(conf, srcDir, distcpDestDir, Optional.empty());
+      FsUtils.syncOwnership(conf, srcDir, distcpDestDir, Optional.empty());
     }
 
     if (!FsUtils.equalDirs(conf, srcDir, distcpDestDir, Optional.empty(), syncModificationTimes)) {

@@ -16,6 +16,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
 import org.apache.hadoop.hive.metastore.api.Table;
 
 import java.util.Optional;
@@ -72,7 +73,8 @@ public class CopyPartitionedTableTask implements ReplicationTask {
     HiveMetastoreClient srcMs = srcCluster.getMetastoreClient();
 
     // Get a fresh copy of the metadata from the source Hive metastore
-    Table freshSrcTable = srcMs.getTable(spec.getDbName(), spec.getTableName());
+    Table srcTable = srcMs.getTable(spec.getDbName(), spec.getTableName());
+    Table freshSrcTable = srcTable;
 
     if (freshSrcTable == null) {
       LOG.warn("Source table " + spec + " doesn't exist, so not " + "copying");
@@ -115,6 +117,9 @@ public class CopyPartitionedTableTask implements ReplicationTask {
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
         ReplicationUtils.createDbIfNecessary(srcMs, destMs, destTable.getDbName());
         LOG.debug("Creating: " + destTable);
+        //TODO if secured cluster
+        PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(spec.getDbName(), spec.getTableName(), srcTable.getOwner());
+        destTable.setPrivileges(privilegeSet);
         destMs.createTable(destTable);
         LOG.debug("Successfully created table " + spec);
         break;
