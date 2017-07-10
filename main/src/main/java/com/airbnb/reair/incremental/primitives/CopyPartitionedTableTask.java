@@ -9,6 +9,7 @@ import com.airbnb.reair.incremental.RunInfo;
 import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.DestinationObjectFactory;
 import com.airbnb.reair.incremental.configuration.ObjectConflictHandler;
+import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import com.airbnb.reair.multiprocessing.Lock;
 import com.airbnb.reair.multiprocessing.LockSet;
 
@@ -95,6 +96,19 @@ public class CopyPartitionedTableTask implements ReplicationTask {
 
     if (existingTable != null) {
       LOG.debug("Table " + spec + " exists on destination!");
+
+      if (!conf.getBoolean(ConfigurationKeys.BATCH_JOB_OVERWRITE_NEWER, true)) {
+        Table freshDestTable = existingTable;
+        if (ReplicationUtils.isSrcOlder(freshSrcTable, freshDestTable)) {
+          LOG.warn(String.format(
+              "Source %s (%s) is older than destination (%s), so not copying",
+              spec,
+              ReplicationUtils.getLastModifiedTime(freshSrcTable),
+              ReplicationUtils.getLastModifiedTime(freshDestTable)));
+          return new RunInfo(RunInfo.RunStatus.DEST_IS_NEWER, 0);
+        }
+      }
+
       objectConflictHandler.handleCopyConflict(srcCluster, destCluster, freshSrcTable,
           existingTable);
     }
@@ -115,11 +129,20 @@ public class CopyPartitionedTableTask implements ReplicationTask {
     switch (action) {
       case CREATE:
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
-        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destTable.getDbName());
+        ReplicationUtils.createDbIfNecessary(
+                srcMs,
+                destMs,
+                destTable.getDbName(),
+                isSaslEnabled()
+        );
         LOG.debug("Creating: " + destTable);
-        //TODO if secured cluster
-        PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(spec.getDbName(), spec.getTableName(), srcTable.getOwner());
-        destTable.setPrivileges(privilegeSet);
+        if (isSaslEnabled()) {
+          PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(
+                  spec.getDbName(),
+                  spec.getTableName()
+          );
+          destTable.setPrivileges(privilegeSet);
+        }
         destMs.createTable(destTable);
         LOG.debug("Successfully created table " + spec);
         break;
@@ -128,6 +151,13 @@ public class CopyPartitionedTableTask implements ReplicationTask {
         LOG.debug("Altering table " + spec + " on destination");
         LOG.debug("Existing table: " + existingTable);
         LOG.debug("Replacement table: " + destTable);
+        if (isSaslEnabled()) {
+          PrincipalPrivilegeSet privilegeSet = srcMs.listTablePrivileges(
+                  spec.getDbName(),
+                  spec.getTableName()
+          );
+          destTable.setPrivileges(privilegeSet);
+        }
         destMs.alterTable(destTable.getDbName(), destTable.getTableName(), destTable);
         LOG.debug("Successfully altered " + spec);
         break;
@@ -141,6 +171,10 @@ public class CopyPartitionedTableTask implements ReplicationTask {
     }
 
     return new RunInfo(RunInfo.RunStatus.SUCCESSFUL, 0);
+  }
+
+  private boolean isSaslEnabled() {
+    return conf.getBoolean(ConfigurationKeys.SASL_ENABLED, false);
   }
 
   @Override

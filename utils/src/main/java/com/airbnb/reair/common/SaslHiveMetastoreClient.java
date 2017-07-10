@@ -2,7 +2,10 @@ package com.airbnb.reair.common;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
@@ -20,114 +23,48 @@ import org.apache.thrift.TException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Concrete implementation of secured HiveMetastoreClient.
  */
-public class KrbHiveMetastoreClient implements HiveMetastoreClient {
+public class SaslHiveMetastoreClient implements HiveMetastoreClient {
 
   private IMetaStoreClient client;
 
-  public KrbHiveMetastoreClient(IMetaStoreClient client) {
+  public SaslHiveMetastoreClient(IMetaStoreClient client) {
     this.client = client;
   }
 
-  /**
-   * TODO.
-   */
-  public void close() {
-
-  }
-
-  private void connectIfNeeded() throws HiveMetastoreException {
-
-  }
-
-  /**
-   * TODO.
-   *
-   * @param partition TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized Partition addPartition(Partition partition) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.add_partition(partition);
     } catch (TException e) {
-      close();
-      throw new HiveMetastoreException(e);
-    }
-  }
-
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
-  public synchronized Table getTable(String dbName, String tableName)
-      throws HiveMetastoreException {
-
-    try {
-      connectIfNeeded();
-
-      Table table = client.getTable(dbName, tableName);
-      return table;
-    } catch (NoSuchObjectException e) {
-      return null;
-    } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
   @Override
-  public PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName, String owner) throws HiveMetastoreException {
+  public synchronized Table getTable(String dbName, String tableName)
+      throws HiveMetastoreException {
+
     try {
-      PrincipalPrivilegeSet principalPrivs = new PrincipalPrivilegeSet();
-      principalPrivs.setUserPrivileges(createGrants(dbName, tableName, owner, PrincipalType.USER));
-      principalPrivs.setGroupPrivileges(createGrants(dbName, tableName, owner, PrincipalType.GROUP));
-      principalPrivs.setRolePrivileges(createGrants(dbName, tableName, owner, PrincipalType.ROLE));
-      return  principalPrivs;
-    } catch (TException ex) {
-      close();
-      throw new HiveMetastoreException(ex);
+      Table table = client.getTable(dbName, tableName);
+      return table;
+    } catch (NoSuchObjectException e) {
+      return null;
+    } catch (TException e) {
+      throw new HiveMetastoreException(e);
     }
   }
 
-  private Map<String, List<PrivilegeGrantInfo>> createGrants(String dbName, String tableName, String owner, PrincipalType principalType) throws TException {
-    List<HiveObjectPrivilege> hiveObjectPrivileges = this.listTablePrivileges(dbName, tableName, owner, principalType);
-
-    Map<String, List<PrivilegeGrantInfo>> privGrants = Maps.newHashMap();
-    List<PrivilegeGrantInfo> grants = Lists.newArrayList();
-    for (HiveObjectPrivilege hiveObjectPrivilege : hiveObjectPrivileges) {
-      grants.add(hiveObjectPrivilege.getGrantInfo());
-    }
-
-    privGrants.put(owner, grants);
-    return privGrants;
-  }
-
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param partitionName TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized Partition getPartition(String dbName, String tableName, String partitionName)
       throws HiveMetastoreException {
 
     try {
-      connectIfNeeded();
       return client.getPartition(dbName, tableName, partitionName);
     } catch (NoSuchObjectException e) {
       return null;
@@ -143,89 +80,45 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
         throw new HiveMetastoreException(e);
       }
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param partition TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized void alterPartition(String dbName, String tableName, Partition partition)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.alter_partition(dbName, tableName, partition);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param table TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized void alterTable(String dbName, String tableName, Table table)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.alter_table(dbName, tableName, table);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public boolean isPartitioned(String dbName, String tableName) throws HiveMetastoreException {
     Table table = getTable(dbName, tableName);
     return table != null && table.getPartitionKeys().size() > 0;
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param partitionName TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
-  public synchronized boolean existsPartition(String dbName, String tableName, String partitionName)
+  @Override
+  public synchronized boolean existsPartition(String dbName,
+                                              String tableName,
+                                              String partitionName)
       throws HiveMetastoreException {
     return getPartition(dbName, tableName, partitionName) != null;
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @return TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized boolean existsTable(String dbName, String tableName)
       throws HiveMetastoreException {
     return getTable(dbName, tableName) != null;
@@ -234,69 +127,39 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public void createTable(Table table) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.createTable(table);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param deleteData TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized void dropTable(String dbName, String tableName, boolean deleteData)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.dropTable(dbName, tableName, deleteData, true);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @param tableName TODO
-   * @param partitionName TODO
-   * @param deleteData TODO
-   *
-   * @throws HiveMetastoreException TODO
-   */
+  @Override
   public synchronized void dropPartition(String dbName, String tableName, String partitionName,
       boolean deleteData) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.dropPartition(dbName, tableName, partitionName, deleteData);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param partitionName TODO
-   * @return TODO
-   */
+  @Override
   public synchronized Map<String, String> partitionNameToMap(String partitionName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.partitionNameToSpec(partitionName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -304,10 +167,8 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public synchronized void createDatabase(Database db) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.createDatabase(db);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -315,12 +176,10 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
   @Override
   public synchronized Database getDatabase(String dbName) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getDatabase(dbName);
     } catch (NoSuchObjectException e) {
       return null;
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -334,10 +193,8 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized List<String> getPartitionNames(String dbName, String tableName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.listPartitionNames(dbName, tableName, (short) -1);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -346,10 +203,8 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
   public synchronized List<String> getTables(String dbName, String tableName)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getTables(dbName, tableName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -362,11 +217,9 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
       String destinationTableName)
           throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.exchange_partition(partitionSpecs, sourceDb, sourceTable, destDb,
           destinationTableName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
@@ -379,49 +232,117 @@ public class KrbHiveMetastoreClient implements HiveMetastoreClient {
       Partition partition)
       throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       client.renamePartition(db, table, partitionValues, partition);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @return TODO
-   */
+  @Override
   public List<String> getAllDatabases() throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getAllDatabases();
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  /**
-   * TODO.
-   *
-   * @param dbName TODO
-   * @return TODO
-   */
+  @Override
   public List<String> getAllTables(String dbName) throws HiveMetastoreException {
     try {
-      connectIfNeeded();
       return client.getAllTables(dbName);
     } catch (TException e) {
-      close();
       throw new HiveMetastoreException(e);
     }
   }
 
-  public List<HiveObjectPrivilege> listTablePrivileges(String dbName, String tableName, String grantorName, PrincipalType principalType) throws TException {
-    List<HiveObjectPrivilege> privileges = Lists.newArrayList();
+  @Override
+  public PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName)
+          throws HiveMetastoreException {
+    try {
+      Set<HiveObjectPrivilege> allPrivs = Sets.newHashSet();
+      allPrivs.addAll(this.listHiveTablePrivileges(dbName, tableName, PrincipalType.USER));
+      allPrivs.addAll(this.listHiveTablePrivileges(dbName, tableName, PrincipalType.GROUP));
+      allPrivs.addAll(this.listHiveTablePrivileges(dbName, tableName, PrincipalType.ROLE));
+
+      List<HiveObjectPrivilege> userPrivs = selectPrivilegesOfType(allPrivs, PrincipalType.USER);
+      List<HiveObjectPrivilege> groupPrivs = selectPrivilegesOfType(allPrivs, PrincipalType.GROUP);
+      List<HiveObjectPrivilege> rolePrivs = selectPrivilegesOfType(allPrivs, PrincipalType.ROLE);
+
+      PrincipalPrivilegeSet principalPrivs = new PrincipalPrivilegeSet();
+      principalPrivs.setUserPrivileges(createGrants(userPrivs));
+      principalPrivs.setGroupPrivileges(createGrants(groupPrivs));
+      principalPrivs.setRolePrivileges(createGrants(rolePrivs));
+
+      return  principalPrivs;
+    } catch (TException ex) {
+      throw new HiveMetastoreException(ex);
+    }
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listDatabasePrivileges(String dbName)
+          throws HiveMetastoreException {
+    Set<HiveObjectPrivilege> privileges = Sets.newHashSet();
+    try {
+      privileges.addAll(this.listHiveDatabasePrivileges(dbName, PrincipalType.USER));
+      privileges.addAll(this.listHiveDatabasePrivileges(dbName, PrincipalType.GROUP));
+      privileges.addAll(this.listHiveDatabasePrivileges(dbName, PrincipalType.ROLE));
+      return Lists.newArrayList(privileges.iterator());
+    } catch (TException ex) {
+      throw new HiveMetastoreException(ex);
+    }
+  }
+
+  @Override
+  public void grantPrivileges(List<HiveObjectPrivilege> privileges) throws HiveMetastoreException {
+    try {
+      client.grant_privileges(new PrivilegeBag(privileges));
+    } catch (TException e) {
+      throw new HiveMetastoreException(e);
+    }
+  }
+
+  @Override
+  public void close() {
+
+  }
+
+  private List<HiveObjectPrivilege> selectPrivilegesOfType(
+          Set<HiveObjectPrivilege> privileges, PrincipalType type) {
+    return privileges.stream()
+            .filter(priv -> priv.getPrincipalType() == type)
+            .collect(Collectors.toList());
+  }
+
+  private Map<String, List<PrivilegeGrantInfo>> createGrants(
+          List<HiveObjectPrivilege> hiveObjectPrivileges) throws TException {
+    Map<String, List<PrivilegeGrantInfo>> privGrants = Maps.newHashMap();
+
+    Map<String, List<HiveObjectPrivilege>> privilegeGroups = hiveObjectPrivileges.stream()
+            .collect(Collectors.groupingBy(HiveObjectPrivilege::getPrincipalName));
+    for (String principalName : privilegeGroups.keySet()) {
+      List<PrivilegeGrantInfo> grantInfos = privilegeGroups.get(principalName).stream()
+              .map(HiveObjectPrivilege::getGrantInfo)
+              .collect(Collectors.toList());
+      privGrants.put(principalName, grantInfos);
+    }
+
+    return privGrants;
+  }
+
+  private List<HiveObjectPrivilege> listHiveTablePrivileges(
+          String dbName,
+          String tableName,
+          PrincipalType principalType) throws TException {
     HiveObjectRef hiveObj = new HiveObjectRef(HiveObjectType.TABLE, dbName, tableName, null, null);
-    privileges.addAll(client.list_privileges(grantorName, principalType, hiveObj));
-    return privileges;
+    return client.list_privileges(null, principalType, hiveObj);
+  }
+
+  private List<HiveObjectPrivilege> listHiveDatabasePrivileges(
+          String dbName,
+          PrincipalType principalType) throws TException {
+    HiveObjectRef hiveObj = new HiveObjectRef(HiveObjectType.DATABASE, dbName, null, null, null);
+    return client.list_privileges(null, principalType, hiveObj);
   }
 }

@@ -91,11 +91,12 @@ public class ReplicationUtils {
    * @param srcMs source Hive metastore
    * @param destMs destination Hive metastore
    * @param dbName DB to create
+   * @param copyGrants whether to copy db grants
    *
    * @throws HiveMetastoreException if there's an error creating the DB.
    */
   public static void createDbIfNecessary(HiveMetastoreClient srcMs, HiveMetastoreClient destMs,
-      String dbName) throws HiveMetastoreException {
+      String dbName, boolean copyGrants) throws HiveMetastoreException {
     if (destMs.existsDb(dbName)) {
       LOG.debug("DB " + dbName + " already exists on destination.");
       return;
@@ -106,8 +107,17 @@ public class ReplicationUtils {
         return;
       }
       Database dbToCreate = new Database(srcDb.getName(), srcDb.getDescription(), null, null);
+      if (copyGrants) {
+        dbToCreate.setOwnerName(srcDb.getOwnerName());
+        dbToCreate.setOwnerType(srcDb.getOwnerType());
+      }
+
       LOG.debug("Creating DB: " + dbToCreate);
       destMs.createDatabase(dbToCreate);
+
+      if (copyGrants) {
+        destMs.grantPrivileges(srcMs.listDatabasePrivileges(srcDb.getName()));
+      }
     }
   }
 
@@ -497,4 +507,78 @@ public class ReplicationUtils {
 
     return partition;
   }
+
+
+  private static Long getLongValue(Map<String, String> parameters, String key) {
+    if (parameters == null) {
+      return null;
+    }
+    String value = parameters.get(key);
+    if (value == null) {
+      return null;
+    }
+    try {
+      return Long.valueOf(value);
+    } catch (NumberFormatException e) {
+      LOG.warn("NumberFormatException: value for key " + key + ": " + value
+          + " is not a valid Integer.");
+      return null;
+    }
+  }
+
+  private static Long getLastModifiedTime(Map<String, String> parameters) {
+    Long lastModifiedTime = getLongValue(parameters, HiveParameterKeys.TLMT);
+    Long transientLastDdlTime = getLongValue(parameters, HiveParameterKeys.TLDT);
+
+    if (lastModifiedTime == null) {
+      return transientLastDdlTime;
+    }
+    if (transientLastDdlTime == null) {
+      return lastModifiedTime;
+    }
+    return Long.max(lastModifiedTime, transientLastDdlTime);
+  }
+
+  /**
+   * Return the last modified time of a table.
+   */
+  public static Long getLastModifiedTime(Table table) {
+    if (table == null) {
+      return null;
+    }
+    Map<String, String> parameters = table.getParameters();
+    return getLastModifiedTime(parameters);
+  }
+
+  /**
+   * Return the last modified time of a partition.
+   */
+  public static Long getLastModifiedTime(Partition partition) {
+    if (partition == null) {
+      return null;
+    }
+    Map<String, String> parameters = partition.getParameters();
+    return getLastModifiedTime(parameters);
+  }
+
+  /**
+   * Return whether the src table is older than the dest table.
+   */
+  public static boolean isSrcOlder(Table src, Table dest) {
+    Long srcModifiedTime = ReplicationUtils.getLastModifiedTime(src);
+    Long destModifiedTime = ReplicationUtils.getLastModifiedTime(dest);
+    return (srcModifiedTime != null && destModifiedTime != null
+        && srcModifiedTime < destModifiedTime);
+  }
+
+  /**
+   * Return whether the src partition is older than the dest partition.
+   */
+  public static boolean isSrcOlder(Partition src, Partition dest) {
+    Long srcModifiedTime = ReplicationUtils.getLastModifiedTime(src);
+    Long destModifiedTime = ReplicationUtils.getLastModifiedTime(dest);
+    return (srcModifiedTime != null && destModifiedTime != null
+        && srcModifiedTime < destModifiedTime);
+  }
+
 }

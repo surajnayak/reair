@@ -146,7 +146,6 @@
             <groupId>org.apache.hive</groupId>
             <artifactId>hive-exec</artifactId>
             <version>0.13.1-cdh5.3.3</version>
-            <scope>test</scope>
         </dependency>
 
         <dependency>

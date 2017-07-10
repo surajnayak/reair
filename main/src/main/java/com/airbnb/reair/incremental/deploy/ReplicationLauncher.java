@@ -4,7 +4,6 @@ import com.airbnb.reair.db.DbConnectionFactory;
 import com.airbnb.reair.db.DbConnectionWatchdog;
 import com.airbnb.reair.db.DbKeyValueStore;
 import com.airbnb.reair.db.StaticDbConnectionFactory;
-import com.airbnb.reair.incremental.DirectoryCopier;
 import com.airbnb.reair.incremental.ReplicationServer;
 import com.airbnb.reair.incremental.StateUpdateException;
 import com.airbnb.reair.incremental.auditlog.AuditLogEntryException;
@@ -13,8 +12,8 @@ import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.ClusterFactory;
 import com.airbnb.reair.incremental.configuration.ConfigurationException;
 import com.airbnb.reair.incremental.configuration.ConfiguredClusterFactory;
-import com.airbnb.reair.incremental.configuration.KrbClusterUtils;
-import com.airbnb.reair.incremental.configuration.SecuredClusterFactory;
+import com.airbnb.reair.incremental.configuration.SaslClusterFactory;
+import com.airbnb.reair.incremental.configuration.SaslClusterUtils;
 import com.airbnb.reair.incremental.configuration.TokenInitException;
 import com.airbnb.reair.incremental.db.PersistedJobInfoStore;
 import com.airbnb.reair.incremental.filter.ReplicationFilter;
@@ -31,7 +30,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.Credentials;
-import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.server.TSimpleServer;
 import org.apache.thrift.transport.TServerSocket;
@@ -128,12 +126,8 @@ public class ReplicationLauncher {
       LOG.info("Resetting state by aborting non-completed jobs");
       persistedJobInfoStore.abortRunnableFromDb();
     }
-//TODO if secured cluster
-//    ClusterFactory clusterFactory = new ConfiguredClusterFactory();
-    ClusterFactory clusterFactory = new SecuredClusterFactory();
-    clusterFactory.setConf(conf);
 
-    tokensInit(new Credentials(), conf);
+    ClusterFactory clusterFactory = getClusterFactory(conf);
 
     final Cluster srcCluster = clusterFactory.getSrcCluster();
     final Cluster destCluster = clusterFactory.getDestCluster();
@@ -230,33 +224,21 @@ public class ReplicationLauncher {
     }
   }
 
-  private static void tokensInit(Credentials credentials, Configuration config) throws TokenInitException {
-    try {
-      TokenCache.obtainTokensForNamenodes(
-              credentials,
-              new Path[] {
-                      new Path(config.get(ConfigurationKeys.SRC_HDFS_ROOT)),
-                      new Path(config.get(ConfigurationKeys.DEST_HDFS_ROOT)) },
-              config);
-
-      URI srcUri = new URI(config.get(ConfigurationKeys.SRC_CLUSTER_METASTORE_URL));
-      KrbClusterUtils.initMetastoreDelegationToken(
-              srcUri,
-              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_SRC,
-              config.get(ConfigurationKeys.SRC_METASTORE_PRINCIPAL),
-              credentials
-      );
-
-      URI destUri = new URI(config.get(ConfigurationKeys.DEST_CLUSTER_METASTORE_URL));
-      KrbClusterUtils.initMetastoreDelegationToken(
-              destUri,
-              KrbClusterUtils.REAIR_KEY_TOKEN_SIGNATURE_DEST,
-              config.get(ConfigurationKeys.DEST_METASTORE_PRINCIPAL),
-              credentials
-      );
-    } catch (Exception ex) {
-      throw new TokenInitException(ex);
+  private static ClusterFactory getClusterFactory(Configuration conf)
+          throws TokenInitException {
+    ClusterFactory clusterFactory;
+    if (isSaslEnabled(conf)) {
+      clusterFactory = new SaslClusterFactory();
+      SaslClusterUtils.tokensInit(new Credentials(), conf);
+    } else {
+      clusterFactory = new ConfiguredClusterFactory();
     }
+    clusterFactory.setConf(conf);
+    return clusterFactory;
+  }
+
+  private static boolean isSaslEnabled(Configuration conf) {
+    return conf.getBoolean(ConfigurationKeys.SASL_ENABLED, false);
   }
 
   /**

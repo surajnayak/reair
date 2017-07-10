@@ -11,6 +11,7 @@ import com.airbnb.reair.incremental.RunInfo;
 import com.airbnb.reair.incremental.configuration.Cluster;
 import com.airbnb.reair.incremental.configuration.DestinationObjectFactory;
 import com.airbnb.reair.incremental.configuration.ObjectConflictHandler;
+import com.airbnb.reair.incremental.deploy.ConfigurationKeys;
 import com.airbnb.reair.multiprocessing.Lock;
 import com.airbnb.reair.multiprocessing.LockSet;
 
@@ -108,6 +109,19 @@ public class CopyPartitionTask implements ReplicationTask {
       return new RunInfo(RunInfo.RunStatus.NOT_COMPLETABLE, 0);
     }
 
+    if (!conf.getBoolean(ConfigurationKeys.BATCH_JOB_OVERWRITE_NEWER, true)) {
+      Partition freshDestPartition =
+          destMs.getPartition(spec.getDbName(), spec.getTableName(), spec.getPartitionName());
+      if (ReplicationUtils.isSrcOlder(freshSrcPartition, freshDestPartition)) {
+        LOG.warn(String.format(
+            "Source %s (%s) is older than destination (%s), so not copying",
+            spec,
+            ReplicationUtils.getLastModifiedTime(freshSrcPartition),
+            ReplicationUtils.getLastModifiedTime(freshDestPartition)));
+        return new RunInfo(RunInfo.RunStatus.DEST_IS_NEWER, 0);
+      }
+    }
+
     // Before copying a partition, first make sure that table is up to date
     Table srcTable = srcMs.getTable(spec.getDbName(), spec.getTableName());
     Table destTable = destMs.getTable(spec.getDbName(), spec.getTableName());
@@ -190,8 +204,8 @@ public class CopyPartitionTask implements ReplicationTask {
 
     if (srcPath.isPresent() && destPath.isPresent() && needToCopy) {
       if (!allowDataCopy) {
-        LOG.debug(String.format("Need to copy %s to %s, but data " + "copy is not allowed", srcPath,
-            destPath));
+        LOG.debug(String.format("Need to copy %s to %s, but data " + "copy is not allowed",
+                srcPath, destPath));
         return new RunInfo(RunInfo.RunStatus.NOT_COMPLETABLE, 0);
       }
 
@@ -222,7 +236,12 @@ public class CopyPartitionTask implements ReplicationTask {
     switch (action) {
 
       case CREATE:
-        ReplicationUtils.createDbIfNecessary(srcMs, destMs, destPartition.getDbName());
+        ReplicationUtils.createDbIfNecessary(
+                srcMs,
+                destMs,
+                destPartition.getDbName(),
+                isSaslEnabled()
+        );
 
         LOG.debug("Creating " + spec + " since it does not exist on " + "the destination");
         destMs.addPartition(destPartition);
@@ -256,5 +275,9 @@ public class CopyPartitionTask implements ReplicationTask {
     lockSet.add(new Lock(Lock.Type.SHARED, spec.getTableSpec().toString()));
     lockSet.add(new Lock(Lock.Type.EXCLUSIVE, spec.toString()));
     return lockSet;
+  }
+
+  private boolean isSaslEnabled() {
+    return conf.getBoolean(ConfigurationKeys.SASL_ENABLED, false);
   }
 }

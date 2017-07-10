@@ -3,6 +3,7 @@ package com.airbnb.reair.common;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.metastore.api.Database;
+import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Partition;
@@ -15,6 +16,7 @@ import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -128,11 +130,6 @@ public class ThriftHiveMetastoreClient implements HiveMetastoreClient {
     }
   }
 
-  @Override
-  public PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName, String owner) throws HiveMetastoreException {
-    return null;
-  }
-
   /**
    * TODO.
    *
@@ -232,7 +229,9 @@ public class ThriftHiveMetastoreClient implements HiveMetastoreClient {
    *
    * @throws HiveMetastoreException TODO
    */
-  public synchronized boolean existsPartition(String dbName, String tableName, String partitionName)
+  public synchronized boolean existsPartition(String dbName,
+                                              String tableName,
+                                              String partitionName)
       throws HiveMetastoreException {
     return getPartition(dbName, tableName, partitionName) != null;
   }
@@ -435,5 +434,22 @@ public class ThriftHiveMetastoreClient implements HiveMetastoreClient {
       close();
       throw new HiveMetastoreException(e);
     }
+  }
+
+  @Override
+  public PrincipalPrivilegeSet listTablePrivileges(String dbName, String tableName)
+          throws HiveMetastoreException {
+    return new PrincipalPrivilegeSet();
+  }
+
+  @Override
+  public List<HiveObjectPrivilege> listDatabasePrivileges(String dbName)
+          throws HiveMetastoreException {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public void grantPrivileges(List<HiveObjectPrivilege> privileges) throws HiveMetastoreException {
+
   }
 }
