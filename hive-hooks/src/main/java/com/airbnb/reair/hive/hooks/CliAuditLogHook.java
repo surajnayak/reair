@@ -65,6 +65,12 @@ public class CliAuditLogHook implements ExecuteWithHookContext {
     run(hookContext, inputs, outputs, ugi);
   }
 
+  /**
+   *
+   * @param hookContext
+   *     The hook context passed to each hooks.
+   * @throws Exception if there's an error
+   */
   public void run(final HookContext hookContext,
                   final Set<ReadEntity> readEntities,
                   final Set<WriteEntity> writeEntities,
